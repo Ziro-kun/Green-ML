@@ -1,2 +1,12 @@
 codecarbon
 requests
+torch
+torchvision
+basicsr>=1.4.2
+facexlib>=0.2.5
+gfpgan>=1.3.5
+numpy
+opencv-python
+Pillow
+tqdm
+realesrgan

@@ -19,15 +19,15 @@ class SimpleNet(nn.Module):
         return x
 
 def train():
-    # 탄소 배출 측정 시작 (한국 지역 코드: KOR)
+    # 탄소 배출 측정 시작 
     tracker = OfflineEmissionsTracker(
         country_iso_code="KOR",
         api_call_interval=1,
-        save_to_file=False  # 로직상 서버로 직접 보내거나 DB 확인용
+        save_to_file=False 
     )
     
     tracker.start()
-    print("🚀 실시간 탄소 배출 측정 시작...")
+    print("🚀 실시간 탄소 배출량 측정 시작...")
 
     # 데이터셋 및 로더 설정
     transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
@@ -39,7 +39,7 @@ def train():
     criterion = nn.CrossEntropyLoss()
 
     model.train()
-    print("🏋️ 모델 학습 중 (MNIST)...")
+    print("🏋️ 모델 학습 중...")
     
     # 1 에포크만 짧게 학습 (데모용)
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -52,13 +52,13 @@ def train():
         if batch_idx % 100 == 0:
             print(f"Batch {batch_idx}/{len(train_loader)} - Loss: {loss.item():.4f}")
         
-        if batch_idx > 300: # 너무 오래 걸리지 않게 제한
+        if batch_idx > 300: # 너무 오래 걸리지 않게
             break
 
     # 측정 종료 및 요약 출력
     emissions_data = tracker.stop()
-    duration = tracker._last_duration
-    energy = tracker._total_energy
+    duration = tracker.final_emissions_data.duration
+    energy = tracker.final_emissions_data.energy_consumed
     
     print(f"\n✅ 학습 완료!")
     print(f"🌲 예상 탄소 배출량: {emissions_data:.6f} kg CO2")

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 interface EmissionRecord {
@@ -11,23 +11,30 @@ interface EmissionRecord {
   timestamp: string;
 }
 
+const API_URL = "https://continently-shunnable-tripp.ngrok-free.dev";
+
 export default function HistoryScreen() {
   const [sessions, setSessions] = useState<EmissionRecord[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const fetchData = async () => {
     try {
       const response = await fetch(
-        "https://continently-shunnable-tripp.ngrok-free.dev/sessions?limit=20",
+        `${API_URL}/sessions?limit=20`,
+        { headers: { 'ngrok-skip-browser-warning': 'true' } }
       );
+      if (!response.ok) throw new Error("Fetch failed");
       const data = await response.json();
       if (data) {
         setSessions([...data].sort((a, b) => b.id - a.id));
       }
-    } catch (error) {
-      console.error("이력 로드 실패:", error);
+      setError(false);
+    } catch (err) {
+      console.error("이력 로드 실패:", err);
+      setError(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -48,9 +55,23 @@ export default function HistoryScreen() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <Text>데이터를 불러오는 중입니다...</Text>
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#4CAF50" />
+        <Text style={{ marginTop: 12, color: "#666" }}>이력을 가져오는 중...</Text>
       </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={styles.center}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <Ionicons name="alert-circle-outline" size={60} color="#CCC" />
+        <Text style={{ marginTop: 16, color: "#666" }}>이력을 불러올 수 없습니다.</Text>
+      </ScrollView>
     );
   }
 

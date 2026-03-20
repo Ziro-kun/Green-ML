@@ -47,3 +47,9 @@ Thumbs.db
 # Internal Tracking
 implementation_plan.md
 task.md
+
+# Large Files & ML Assets
+*.pth
+*.tar.gz
+data/
+measurement/weights/

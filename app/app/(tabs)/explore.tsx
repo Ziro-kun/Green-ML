@@ -1,58 +1,95 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   View,
   Text,
   ScrollView,
   TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-const tips = [
-  {
-    id: 1,
-    icon: "time-outline",
-    color: "#3b82f6",
-    bg: "#eff6ff",
-    category: "학습 최적화",
-    title: "조기 종료(Early Stopping) 적용",
-    desc: "과적합 감지 시 학습을 자동 중단하여 불필요한 연산을 최대 40% 줄일 수 있습니다.",
-    impact: "높음",
-    saving: "~0.07 kg CO₂",
-    detail:
-      "patience=10 설정으로 검증 손실이 개선되지 않으면 자동 종료합니다. GPT-2 Fine-tune 세션에서 특히 효과적입니다.",
-  },
-  {
-    id: 2,
-    icon: "server-outline",
-    color: "#8b5cf6",
-    bg: "#f5f3ff",
-    category: "인프라",
-    title: "재생에너지 데이터센터 활용",
-    desc: "AWS us-west-2 (오리건) 리전은 탄소 집약도가 낮아 동일 작업 대비 배출량을 60% 감소시킵니다.",
-    impact: "매우 높음",
-    saving: "~0.15 kg CO₂",
-    detail:
-      "현재 사용 중인 리전의 Carbon Intensity: 210 gCO₂/kWh → us-west-2: 45 gCO₂/kWh",
-  },
-  {
-    id: 3,
-    icon: "zap-outline",
-    color: "#f59e0b",
-    bg: "#fffbeb",
-    category: "배치 최적화",
-    title: "혼합 정밀도(Mixed Precision) 학습",
-    desc: "FP16/BF16 사용으로 메모리 사용량을 절반으로 줄이고 학습 속도를 25% 향상시킵니다.",
-    impact: "중간",
-    saving: "~0.03 kg CO₂",
-    detail:
-      "torch.cuda.amp.autocast() 또는 trainer.use_amp=True 설정으로 활성화하세요.",
-  },
-];
+interface Tip {
+  id: number;
+  icon: string;
+  color: string;
+  bg: string;
+  category: string;
+  title: string;
+  desc: string;
+  impact: string;
+  saving: string;
+  detail: string;
+}
+
+interface AdvisorData {
+  summary: string;
+  total_savings_kg: number;
+  tips: Tip[];
+}
+
+const API_URL = "https://continently-shunnable-tripp.ngrok-free.dev";
 
 export default function AdvisorScreen() {
   const [selectedTip, setSelectedTip] = useState<number | null>(null);
-  const [applied, setApplied] = useState<Set<number>>(new Set([2]));
+  const [applied, setApplied] = useState<Set<number>>(new Set());
+  const [data, setData] = useState<AdvisorData | null>(null);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // 세션 목록 가져오기
+  const fetchSessions = async () => {
+    try {
+      const res = await fetch(`${API_URL}/sessions?limit=10`, {
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
+      const json = await res.json();
+      setSessions(json);
+      // 만약 선택된 세션이 없으면 가장 최신 세션을 기본값으로 설정
+      if (json.length > 0 && selectedSessionId === null) {
+        setSelectedSessionId(json[0].id);
+      }
+    } catch (err) {
+      console.error("세션 목록 로드 실패:", err);
+    }
+  };
+
+  const fetchAdvisorData = async (sessionId: number | null) => {
+    try {
+      setLoading(true);
+      const url = sessionId 
+        ? `${API_URL}/advisor?session_id=${sessionId}`
+        : `${API_URL}/advisor`;
+        
+      const res = await fetch(url, { headers: { 'ngrok-skip-browser-warning': 'true' } });
+      if (!res.ok) throw new Error("Response fail");
+      const json = await res.json();
+      setData(json);
+      setError(false);
+    } catch (err) {
+      console.error("어드바이저 로드 실패:", err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSessions().then(() => {
+      fetchAdvisorData(selectedSessionId);
+    });
+  }, [selectedSessionId]);
+
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    await fetchSessions();
+    await fetchAdvisorData(selectedSessionId);
+    setRefreshing(false);
+  }, [selectedSessionId]);
 
   const toggleTip = (id: number) => {
     setSelectedTip(selectedTip === id ? null : id);
@@ -65,8 +102,37 @@ export default function AdvisorScreen() {
     setApplied(next);
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#4CAF50" />
+        <Text style={{ marginTop: 10, color: "#666" }}>AI 분석 중...</Text>
+      </View>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={styles.center}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <Ionicons name="alert-circle-outline" size={48} color="#CCC" />
+        <Text style={{ marginTop: 16, color: "#666", textAlign: 'center', paddingHorizontal: 40 }}>
+          AI 분석 데이터를 가져올 수 없습니다.{"\n"}네트워크 연결 상태를 확인하고 다시 시도해주세요.
+        </Text>
+      </ScrollView>
+    );
+  }
+
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView 
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
       <View style={styles.header}>
         <View style={styles.logoRow}>
           <Ionicons name="leaf" size={16} color="#4CAF50" />
@@ -79,23 +145,47 @@ export default function AdvisorScreen() {
             <Text style={styles.aiBadgeText}>AI 분석</Text>
           </View>
         </View>
-        <Text style={styles.headerSub}>3개 개선 항목 발견</Text>
+        <Text style={styles.headerSub}>{data.summary}</Text>
+      </View>
+
+      {/* 세션 선택 Picker 추가 */}
+      <View style={styles.sessionPickerContainer}>
+        <Text style={styles.pickerTitle}>분석할 세션 선택</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sessionScrollEnv}>
+          {sessions.map((s) => (
+            <TouchableOpacity 
+              key={s.id} 
+              onPress={() => setSelectedSessionId(s.id)}
+              style={[
+                styles.sessionChip, 
+                selectedSessionId === s.id && styles.sessionChipActive
+              ]}
+            >
+              <Text style={[
+                styles.sessionChipText,
+                selectedSessionId === s.id && styles.sessionChipTextActive
+              ]}>
+                #{s.id} {s.project_name.substring(0, 15)}...
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       <View style={styles.content}>
         <View style={styles.banner}>
           <View style={styles.bannerDoc}>
-            <Text style={styles.bannerLabel}>모든 권장사항 적용 시</Text>
-            <Text style={styles.bannerValue}>0.34 kg CO₂</Text>
-            <Text style={styles.bannerSub}>현재 대비 약 24% 절감 가능</Text>
+            <Text style={styles.bannerLabel}>권장사항 모두 적용 시 예상 절감</Text>
+            <Text style={styles.bannerValue}>{(data.total_savings_kg || 0).toFixed(4)} kg CO₂</Text>
+            <Text style={styles.bannerSub}>현재 학습 패턴 분석 결과</Text>
           </View>
           <View style={styles.bannerIcon}>
             <Ionicons name="bulb" size={32} color="white" />
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>개선 권장사항</Text>
-        {tips.map((tip) => (
+        <Text style={styles.sectionTitle}>사용자 맞춤 개선 권장사항</Text>
+        {data.tips.map((tip) => (
           <View key={tip.id} style={styles.tipCard}>
             <TouchableOpacity
               style={styles.tipHeader}
@@ -135,7 +225,7 @@ export default function AdvisorScreen() {
                   <View style={styles.savingRow}>
                     <Ionicons name="leaf" size={12} color="#4CAF50" />
                     <Text style={styles.savingText}>
-                      예상 절감: {tip.saving}
+                      예상 효과: {tip.saving}
                     </Text>
                   </View>
                 </View>
@@ -148,7 +238,7 @@ export default function AdvisorScreen() {
                 >
                   <Ionicons
                     name={
-                      applied.has((id) => id === tip.id)
+                      applied.has(tip.id)
                         ? "checkmark-circle"
                         : "add-circle-outline"
                     }
@@ -175,6 +265,7 @@ export default function AdvisorScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8F9FA" },
+  center: { justifyContent: "center", alignItems: "center" },
   header: {
     backgroundColor: "white",
     paddingHorizontal: 20,
@@ -203,6 +294,35 @@ const styles = StyleSheet.create({
   },
   aiBadgeText: { color: "#9C27B0", fontSize: 10, fontWeight: "700" },
   headerSub: { color: "#999", fontSize: 12, marginTop: 4 },
+  sessionPickerContainer: {
+    paddingVertical: 12,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+  },
+  pickerTitle: {
+    fontSize: 11,
+    color: "#666",
+    fontWeight: "700",
+    paddingHorizontal: 20,
+    marginBottom: 8,
+    textTransform: "uppercase",
+  },
+  sessionScrollEnv: { paddingHorizontal: 16, gap: 8 },
+  sessionChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#F0F2F5",
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  sessionChipActive: {
+    backgroundColor: "#2E7D32",
+    borderColor: "#2E7D32",
+  },
+  sessionChipText: { fontSize: 12, color: "#666", fontWeight: "600" },
+  sessionChipTextActive: { color: "white" },
   content: { padding: 16 },
   banner: {
     backgroundColor: "#2E7D32",
@@ -217,7 +337,7 @@ const styles = StyleSheet.create({
   bannerLabel: { color: "#A5D6A7", fontSize: 11, fontWeight: "600" },
   bannerValue: {
     color: "white",
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "800",
     marginTop: 4,
   },

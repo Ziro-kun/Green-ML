@@ -8,8 +8,8 @@ KST = timezone(timedelta(hours=9))
 def get_kst_now():
     return datetime.now(KST)
 
-class EmissionRecord(Base):
-    __tablename__ = "emission_records"
+class Session(Base):
+    __tablename__ = "sessions"
 
     id = Column(Integer, primary_key=True, index=True)
     project_name = Column(String, index=True)

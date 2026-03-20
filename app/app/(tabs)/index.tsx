@@ -7,6 +7,7 @@ import {
   ScrollView,
   RefreshControl,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -24,20 +25,31 @@ interface EmissionRecord {
 
 export default function DashboardScreen() {
   const [session, setSession] = useState<EmissionRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // API 주소 설정 (Ngrok 주소 사용)
+  const API_URL = "https://continently-shunnable-tripp.ngrok-free.dev";
 
   // 데이터 가져오기 함수
   const fetchLatestData = async () => {
     try {
       const response = await fetch(
-        "https://continently-shunnable-tripp.ngrok-free.dev/sessions?limit=1",
+        `${API_URL}/sessions?limit=1`,
+        { headers: { 'ngrok-skip-browser-warning': 'true' } }
       );
+      if (!response.ok) throw new Error("Network response was not ok");
       const data = await response.json();
-      if (data && data.length > 0) {
-        setSession(data[data.length - 1]);
+      if (data && Array.isArray(data) && data.length > 0) {
+        setSession(data[0]); // 최신 데이터
       }
-    } catch (error) {
-      console.error("데이터 로드 실패:", error);
+      setError(false);
+    } catch (err) {
+      console.error("데이터 로드 실패:", err);
+      setError(true);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -51,11 +63,46 @@ export default function DashboardScreen() {
     setRefreshing(false);
   }, []);
 
-  if (!session) {
+  if (loading) {
     return (
-      <View style={styles.center}>
-        <Text>데이터를 불러오는 중입니다...</Text>
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#2E7D32" />
+        <Text style={{ marginTop: 12, color: "#666" }}>데이터를 불러오는 중...</Text>
       </View>
+    );
+  }
+
+  // 연결은 되었으나 데이터가 한 개도 없는 경우
+  if (!error && !session) {
+    return (
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={styles.center}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <Ionicons name="document-text-outline" size={60} color="#CCC" />
+        <Text style={{ marginTop: 20, fontSize: 16, color: "#333", fontWeight: "600" }}>기록된 세션이 없습니다</Text>
+        <Text style={{ marginTop: 8, color: "#999", textAlign: "center", paddingHorizontal: 40 }}>
+          기록된 데이터가 없습니다. 새로운 학습 세션을 시작하여 탄소 배출량을 측정해보세요.
+        </Text>
+      </ScrollView>
+    );
+  }
+
+  // 진짜 연결 에러인 경우
+  if (error) {
+    return (
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={styles.center}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <Ionicons name="cloud-offline-outline" size={60} color="#CCC" />
+        <Text style={{ marginTop: 20, fontSize: 16, color: "#333", fontWeight: "600" }}>서버 연결 실패</Text>
+        <Text style={{ marginTop: 8, color: "#999", textAlign: "center", paddingHorizontal: 40 }}>
+          서버와의 연결이 원활하지 않습니다. 네트워크 상태나 API 주소를 다시 확인해주세요.{"\n\n"}화면을 아래로 당겨서 다시 시도할 수 있습니다.
+        </Text>
+      </ScrollView>
     );
   }
 
@@ -66,17 +113,17 @@ export default function DashboardScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      {/* Header */}
+      {/* Dashboard Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.logoRow}>
             <Ionicons name="leaf" size={18} color="#A5D6A7" />
             <Text style={styles.logoText}>Green-ML</Text>
           </View>
-          <Text style={styles.statusText}>실시간 연결 중 ●</Text>
+          <Text style={styles.statusText}>실시간 연결 ●</Text>
         </View>
         <Text style={styles.headerTitle}>탄소 영수증</Text>
-        <Text style={styles.headerSub}>마지막 학습 세션 기준</Text>
+        <Text style={styles.headerSub}>최근 AI 학습 세션 보고서</Text>
       </View>
 
       <View style={styles.content}>
@@ -87,11 +134,11 @@ export default function DashboardScreen() {
             <View>
               <Text style={styles.receiptLabel}>프로젝트</Text>
               <Text style={styles.receiptProjectName}>
-                {session.project_name}
+                {session?.project_name || "N/A"}
               </Text>
             </View>
             <View style={[styles.gradeBadge, { backgroundColor: "#E8F5E9" }]}>
-              <Text style={[styles.gradeText, { color: "#2E7D32" }]}>A</Text>
+              <Text style={[styles.gradeText, { color: "#2E7D32" }]}>등급</Text>
             </View>
           </View>
 
@@ -107,7 +154,7 @@ export default function DashboardScreen() {
             <Text style={styles.receiptLabel}>총 탄소 배출량</Text>
             <View style={styles.emissionValueRow}>
               <Text style={styles.emissionValue}>
-                {session.emissions.toFixed(6)}
+                {session?.emissions ? session.emissions.toFixed(6) : "0.000000"}
               </Text>
               <Text style={styles.unitText}>kg CO₂-eq</Text>
             </View>
@@ -125,14 +172,14 @@ export default function DashboardScreen() {
             <DetailRow
               icon="flash"
               label="에너지 소비량"
-              value={`${session.energy_consumed.toFixed(4)} kWh`}
+              value={`${session?.energy_consumed ? session.energy_consumed.toFixed(4) : "0"} kWh`}
               iconColor="#FBC02D"
               bgColor="#FFFDE7"
             />
             <DetailRow
               icon="time"
               label="학습 시간"
-              value={`${Math.floor(session.duration)}초`}
+              value={`${session?.duration ? Math.floor(session.duration) : "0"}초`}
               iconColor="#1976D2"
               bgColor="#E3F2FD"
             />
@@ -142,7 +189,7 @@ export default function DashboardScreen() {
           <View style={styles.receiptFooter}>
             <Text style={styles.footerLabel}>기록 시각</Text>
             <Text style={styles.footerValue}>
-              {new Date(session.timestamp).toLocaleString("ko-KR")}
+              {session?.timestamp ? new Date(session.timestamp).toLocaleString("ko-KR") : "N/A"}
             </Text>
           </View>
         </View>
