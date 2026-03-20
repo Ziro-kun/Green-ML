@@ -9,8 +9,9 @@ import os
 import requests
 from datetime import datetime
 
-# API 설정 (Ngrok 주소)
-API_URL = "https://continently-shunnable-tripp.ngrok-free.dev/record"
+# API 설정
+API_URL = "http://127.0.0.1:8000/record"
+NGROK_URL = "https://continently-shunnable-tripp.ngrok-free.dev/record"
 
 def run_heavy_training(epochs=1, batch_limit=50, project_name="ResNet101-Heavy-Check"):
     """
@@ -22,7 +23,8 @@ def run_heavy_training(epochs=1, batch_limit=50, project_name="ResNet101-Heavy-C
     tracker = OfflineEmissionsTracker(
         country_iso_code="KOR",
         api_call_interval=1,
-        save_to_file=False
+        save_to_file=False,
+        log_level="error"
     )
     
     tracker.start()
@@ -90,13 +92,19 @@ def run_heavy_training(epochs=1, batch_limit=50, project_name="ResNet101-Heavy-C
     }
     
     try:
-        response = requests.post(API_URL, json=payload, headers={'ngrok-skip-browser-warning': 'true'})
+        response = requests.post(API_URL, json=payload, headers={'ngrok-skip-browser-warning': 'true'}, timeout=5)
         if response.status_code == 200:
-            print("Successfully recorded session data to API server.")
+            print("Successfully recorded session to Local API.")
         else:
-            print(f"API Error: {response.status_code}")
+            print(f"Local API Error ({response.status_code}), retrying with ngrok...")
+            requests.post(NGROK_URL, json=payload, headers={'ngrok-skip-browser-warning': 'true'}, timeout=10)
     except Exception as e:
-        print(f"Network Connection Error: {e}")
+        print(f"Connection error to local API, retrying with ngrok...")
+        try:
+            requests.post(NGROK_URL, json=payload, headers={'ngrok-skip-browser-warning': 'true'}, timeout=10)
+            print("Successfully recorded session to Ngrok API.")
+        except Exception:
+            print("Failed to record session to both Local and Ngrok API.")
 
 if __name__ == "__main__":
     run_heavy_training()

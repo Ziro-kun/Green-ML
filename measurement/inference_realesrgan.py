@@ -2,8 +2,16 @@ import argparse
 import cv2
 import glob
 import os
+import sys
 import torch
 from torch.nn import functional as F
+import torchvision
+from torchvision.transforms import functional as F_tv
+
+# --- Fix for basicsr incompatibility with newer torchvision ---
+# basicsr expects torchvision.transforms.functional_tensor, which was removed/moved in 0.17+
+if not hasattr(torchvision.transforms, 'functional_tensor'):
+    sys.modules['torchvision.transforms.functional_tensor'] = F_tv
 from basicsr.archs.rrdbnet_arch import RRDBNet as RRDBNet_original
 from basicsr.utils.download_util import load_file_from_url
 
@@ -22,19 +30,28 @@ NGROK_URL = "https://continently-shunnable-tripp.ngrok-free.dev/record"
 # --- RRDBNet x2plus 대응을 위한 클래스 래핑 ---
 class RRDBNet(RRDBNet_original):
     def __init__(self, *args, **kwargs):
-        self.scale = kwargs.get('scale', 4)
-        in_nc = kwargs.get('num_in_ch', 3)
-        if self.scale == 2:
-            kwargs['num_in_ch'] = in_nc * 4
-        elif self.scale == 1:
-            kwargs['num_in_ch'] = in_nc
-        # scale 4 uses original num_in_ch (3)
+        self.scale = kwargs.pop('scale', 4)  # Get scale and REMOVE from kwargs
         super(RRDBNet, self).__init__(*args, **kwargs)
+        
+        # Real-ESRGAN x2plus(scale=2) needs 12 channels. 
+        # But some basicsr versions incorrectly scale it to 48.
+        target_ch = 3
+        if self.scale == 2: target_ch = 12
+        elif self.scale == 1: target_ch = 3
+        # for scale 4, we also want 3 channels (x4plus doesn't use pixel unshuffle)
+        
+        current_ch = self.conv_first.weight.shape[1]
+        if current_ch != target_ch:
+            print(f"  [Fix] Correcting conv_first channels for scale={self.scale}: {current_ch} -> {target_ch}")
+            # Re-initialize with correct number of channels
+            nf = self.conv_first.out_channels
+            self.conv_first = torch.nn.Conv2d(target_ch, nf, 3, 1, 1)
 
     def forward(self, x):
         if self.scale > 1 and x.shape[1] == 3:
             # x2plus weights expect 12 channels, so we pixel_unshuffle if input is 3-ch
             try:
+                # pixel_unshuffle increases channels by scale**2
                 return super(RRDBNet, self).forward(F.pixel_unshuffle(x, self.scale))
             except Exception:
                 # Fallback to original if already unshuffled or architecture differs
@@ -127,7 +144,7 @@ def run_realesrgan_inference(
         paths = sorted(glob.glob(os.path.join(input, '*')))
 
     # 1. 탄소 배출 측정 시작
-    tracker = OfflineEmissionsTracker(country_iso_code="KOR", save_to_file=False)
+    tracker = OfflineEmissionsTracker(country_iso_code="KOR", save_to_file=False, log_level="error")
     tracker.start()
     print(f"🚀 [{project_name}] 탄소 측정 시작...")
 

@@ -23,6 +23,15 @@ interface EmissionRecord {
   timestamp: string;
 }
 
+// 탄소 배출량에 따른 등급 계산 함수
+const getCarbonGrade = (emissions: number) => {
+  if (emissions < 0.01) return { label: "A+", color: "#2E7D32", bg: "#E8F5E9" };
+  if (emissions < 0.05) return { label: "A", color: "#43A047", bg: "#F1F8E9" };
+  if (emissions < 0.1) return { label: "B", color: "#FBC02D", bg: "#FFFDE7" };
+  if (emissions < 0.5) return { label: "C", color: "#FB8C00", bg: "#FFF3E0" };
+  return { label: "D", color: "#E53935", bg: "#FFEBEE" };
+};
+
 export default function DashboardScreen() {
   const [session, setSession] = useState<EmissionRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -137,9 +146,23 @@ export default function DashboardScreen() {
                 {session?.project_name || "N/A"}
               </Text>
             </View>
-            <View style={[styles.gradeBadge, { backgroundColor: "#E8F5E9" }]}>
-              <Text style={[styles.gradeText, { color: "#2E7D32" }]}>등급</Text>
-            </View>
+            {session && (
+              <View 
+                style={[
+                  styles.gradeBadge, 
+                  { backgroundColor: getCarbonGrade(session.emissions).bg }
+                ]}
+              >
+                <Text 
+                  style={[
+                    styles.gradeText, 
+                    { color: getCarbonGrade(session.emissions).color }
+                  ]}
+                >
+                  {getCarbonGrade(session.emissions).label}
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Dotted Divider */}
