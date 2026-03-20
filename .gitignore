@@ -44,9 +44,6 @@ ehthumbs.db
 Thumbs.db
 /docs
 
-# Misc
-.cache/
-emissions.csv
-*.log
-.vscode/
-.idea/
+# Internal Tracking
+implementation_plan.md
+task.md
